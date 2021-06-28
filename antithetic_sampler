@@ -1,0 +1,130 @@
+import numpy as np
+import math
+import matplotlib.pyplot as plt
+from scipy.stats import norm,chi2
+N=3
+mu=0
+sigma=1
+def sphere_sampler(N,num):#在n-1维球面上采样
+    out_put_list=[[0 for j in range(N)] for i in range(num)]
+    for i in range(num):
+        delta_1=np.random.normal(0,1,N)
+        delta=[i**2 for i in delta_1]
+        delta_1=delta_1/math.sqrt(sum(delta))
+        out_put_list[i]=delta_1
+    return out_put_list
+def transform_matrix(N):
+    result=[[0 for j in range(N)] for i in range(N-1)]
+    for i in range(N-1):
+        s=i+1
+        result[i][i]=(i+1-N)/math.sqrt(((N-s)*(N-s+1)))
+        for j in range(i+1,N):
+            result[i][j]=1/math.sqrt(((N-s)*(N-s+1)))
+    print(result)
+    return result
+def generating_antithetic_1(x_1,N,mu,sigma):#第一种antithetic sampling
+    mu_sample=sum(x_1)/N
+    x_1_deviation=[(i-mu_sample)**2 for i in x_1]
+    sigma_sample=math.sqrt(sum(x_1_deviation)/N)
+    mu_sample_transformed=(mu_sample-mu)/math.sqrt(((sigma*sigma)/N))
+    mu_antithetic=norm.ppf(1-norm.cdf(mu_sample))
+    mu_antithetic=mu_antithetic*math.sqrt((sigma*sigma)/N)+mu
+    sigma_antithetic=chi2.ppf((1-chi2.cdf((((N-1)*sigma_sample**2)/sigma**2),N-1)),N-1)
+    sigma_antithetic=math.sqrt((sigma_antithetic*sigma**2)/(N-1))
+    #print(mu_antithetic,sigma_antithetic)
+    z=sphere_sampler(N,1)[0]
+    x_sphere=[0 for i in range(N)]
+    B=transform_matrix(N)
+    for i in range(N):
+        for j in range(N-1):
+            x_sphere[i]+=z[j]*B[j][i]
+        x_sphere[i]*=math.sqrt(N)*sigma_sample
+        x_sphere+=mu_sample
+        #print(x_sphere)
+    return x_sphere
+def generating_antithetic_2(x_1,N,mu,sigma):#第二种antithetic sampling
+    mu_sample=sum(x_1)/N
+    x_1_deviation=[(i-mu_sample)**2 for i in x_1]
+    sigma_sample=math.sqrt(sum(x_1_deviation)/N)
+    mu_sample_transformed=(mu_sample-mu)/math.sqrt(((sigma*sigma)/N))
+    mu_antithetic=norm.ppf(1-norm.cdf(mu_sample))
+    mu_antithetic=mu_antithetic*math.sqrt((sigma*sigma)/N)+mu
+    sigma_antithetic=chi2.ppf((1-chi2.cdf((((N-1)*sigma_sample**2)/sigma**2),N-1)),N-1)
+    sigma_antithetic=math.sqrt((sigma_antithetic*sigma**2)/(N-1))
+    #print(mu_antithetic,sigma_antithetic)
+    return np.random.normal(mu_antithetic,sigma_antithetic,N)
+def antithetic_sampling(N,mu,sigma):
+    x_1=np.random.normal(mu,sigma,N)
+    x_2=generating_antithetic_2(x_1,N,mu,sigma)
+    return np.hstack((x_1,x_2))
+def calcu_mean(x_1):
+    return sum(x_1)/len(x_1)
+def calcu_std_variance(x_1):
+    mu=calcu_mean(x_1)
+    variance=0
+    for i in range(len(x_1)):
+        variance+=(x_1[i]-mu)**2
+    return math.sqrt(variance/len(x_1))
+###检验antithetic sampling对于使方差逼近原分布的有效性建议
+x_1=np.random.normal(mu,sigma,N)
+x_2=generating_antithetic_2(x_1,N,mu,sigma)
+x_3=np.random.normal(mu,sigma,N)
+print('original',sum(x_1)/N)
+print('antithetic',(sum(x_1)+sum(x_2))/(2*N))
+print('non-antithetic',(sum(x_1)+sum(x_3))/(2*N))
+mu_1=sum(x_1)/N
+sigma_1=0
+for i in range(len(x_1)):
+    sigma_1+=(x_1[i]-mu_1)**2
+sigma_1=sigma_1/N
+sigma_1=math.sqrt(sigma_1)
+sigma_2=0
+mu_2=(sum(x_2)+sum(x_1))/(2*N)
+for i in range(len(x_1)):
+    sigma_2+=(x_1[i]-mu_2)**2
+    sigma_2+=(x_2[i]-mu_2)**2
+sigma_2=sigma_2/(2*N)
+sigma_2=math.sqrt(sigma_2)
+print('original',sigma_1)
+print('antithetic',sigma_2)
+sigma_3=0
+mu_3=(sum(x_3)+sum(x_1))/(2*N)
+for i in range(len(x_1)):
+    sigma_3+=(x_1[i]-mu_2)**2
+    sigma_3+=(x_3[i]-mu_2)**2
+sigma_3=sigma_3/(2*N)
+sigma_3=math.sqrt(sigma_3)
+print('non-antithetic',sigma_3)
+###
+
+###对不同采样数量检验antithetic sampling效果
+n_trials=15
+dimension_list=[2,5,10,20,40,100]
+n_layers=len(dimension_list)
+result_list=[[0 for i in range(n_trials)] for j in range(n_layers)]
+naive_result_list=[[0 for i in range(n_trials)] for j in range(n_layers)]
+for i in range(n_layers):
+    variance_list=[0 for s in range(n_trials)]
+    naive_variance_list=[0 for s in range(n_trials)]
+    for j in range(n_trials):
+        x_1=antithetic_sampling(dimension_list[i],0,1)
+        x_2=np.random.normal(0,1,2*dimension_list[i])
+        variance_list[j]=calcu_std_variance(x_1)
+        naive_variance_list[j]=calcu_std_variance(x_2)
+        result_list[i][j]=variance_list[j]
+        naive_result_list[i][j]=naive_variance_list[j]
+    plt.plot([math.log(dimension_list[i]) for s in range(n_trials)],variance_list,'ro')
+    plt.plot([math.log(dimension_list[i]) for s in range(n_trials)],naive_variance_list,'bo')
+plt.show()
+index=[i+1 for i in range(n_trials)]
+for i in range(n_layers):
+    plt.title('Variance list with sampling number as {}'.format(dimension_list[i]))
+    plt.plot(index,result_list[i],'r')
+    plt.plot(index,result_list[i],'ro')
+    plt.plot(index,naive_result_list[i],'b')
+    plt.plot(index,naive_result_list[i],'bo')
+    plt.plot(index,[1.0 for j in range(n_trials)],':')
+    plt.show()
+###
+
+
